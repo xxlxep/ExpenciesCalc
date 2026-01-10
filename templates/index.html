@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <title>Seniors Detoks Tracker</title>
+</head>
+<body>
+    <main class="container">
+        <header style="text-align: center; margin-bottom: 2rem;">
+            <h1>Мой Бюджет</h1>
+            <div class="grid">
+                <article style="background-color: #d1ffdb; border: 1px solid #2e7d32;">
+                    <small style="color: #1b5e20;">МОЖНО ПОТРАТИТЬ СЕГОДНЯ</small>
+                    <h2 style="color: #1b5e20; margin: 0;">{{ status.daily_limit_rsd }} RSD</h2>
+                </article>
+
+                <article style="background-color: #f0f4f8;">
+                    <small>ОСТАТОК ДО 10 ФЕВРАЛЯ</small>
+                    <h2 style="margin: 0;">{{ status.remaining_total_rsd }} RSD</h2>
+                </article>
+            </div>
+            <p><small>Осталось дней: <strong>{{ status.days_left }}</strong></small></p>
+        </header>
+
+        <article>
+            <header>Добавить новую покупку</header>
+            <form action="/ui/add" method="post">
+                <div class="grid">
+                    <input type="number" step="0.01" name="amount" placeholder="Сумма (RSD)" required>
+                    <input type="text" name="description" placeholder="На что (например, Лидл)" required>
+                </div>
+                <button type="submit" class="contrast">Записать трату</button>
+            </form>
+        </article>
+
+        <h3>История последних трат</h3>
+        <table role="grid">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Что</th>
+                    <th>Сколько</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in history %}
+                <tr>
+                    <td>{{ item.created_at }}</td>
+                    <td>{{ item.description }}</td>
+                    <td><strong>{{ item.amount }} RSD</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>
