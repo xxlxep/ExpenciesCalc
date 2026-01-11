@@ -158,3 +158,12 @@ async def ui_add_expense(amount: float = Form(...), description: str = Form(...)
     db.add(db_expense)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+# Эндпоинт для удаления траты через интерфейс
+@app.post("/ui/delete/{expense_id}")
+async def ui_delete_expense(expense_id: int, db: Session = Depends(get_db)):
+    expense = db.query(Expense).filter(Expense.id == expense_id).first()
+    if expense:
+        db.delete(expense)
+        db.commit()
+    return RedirectResponse(url="/", status_code=303)

@@ -37,23 +37,30 @@
 
         <h3>История последних трат</h3>
         <table role="grid">
-            <thead>
-                <tr>
-                    <th>Дата</th>
-                    <th>Что</th>
-                    <th>Сколько</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in history %}
-                <tr>
-                    <td>{{ item.created_at }}</td>
-                    <td>{{ item.description }}</td>
-                    <td><strong>{{ item.amount }} RSD</strong></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <thead>
+        <tr>
+            <th>Что</th>
+            <th>Сколько</th>
+            <th>Действие</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in history %}
+        <tr>
+            <td>{{ item.description }}</td>
+            <td><strong>{{ item.amount }} RSD</strong></td>
+            <td>
+                <form action="/ui/delete/{{ item.id }}" method="post" style="margin:0;">
+                    <button type="submit" class="outline secondary"
+                            style="padding: 2px 10px; font-size: 12px; margin:0;">
+                        ✕
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
     </main>
 </body>
 </html>
