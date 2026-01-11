@@ -8,22 +8,32 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import Request, Form
 from fastapi.responses import RedirectResponse
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 # Указываем, где лежат шаблоны
 templates = Jinja2Templates(directory="templates")
 
 # --- НАСТРОЙКА БАЗЫ ДАННЫХ ---
 
-# Указываем путь к файлу базы. SQLite создаст файл budget.db в той же папке
-SQLALCHEMY_DATABASE_URL = "sqlite:///./budget.db"
+# Читаем URL базы из настроек Render.
+# Если его там нет (например, запускаешь локально), используем SQLite.
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Создаем "движок" для связи. check_same_thread=False нужен только для SQLite, чтобы FastAPI мог работать из разных потоков
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    # Render выдает ссылку postgres://, но SQLAlchemy требует postgresql://
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Создаем фабрику сессий — это "завод", который будет выдавать нам подключение к БД для каждого запроса
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./expenses.db"
+
+# Для SQLite нужен специальный аргумент, для Postgres он не нужен
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Создаем базовый класс. От него мы отнаследуем все наши таблицы (модели)
 Base = declarative_base()
 
 
