@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException  # Импортируем я
 from sqlalchemy import create_engine, Column, Integer, Float, String, Date  # Инструменты для описания таблиц
 from sqlalchemy.ext.declarative import declarative_base  # Базовый класс для моделей таблиц
 from sqlalchemy.orm import sessionmaker, Session  # Инструменты для работы с сессиями (подключениями) к БД
-from datetime import date, datetime  # Работа с датами
+from datetime import date, timedelta, datetime  # Работа с датами
 import pydantic  # Валидация данных на входе
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -140,14 +140,43 @@ def get_history(limit: int = 10, db: Session = Depends(get_db)):
 # Главная страница фронтенда
 @app.get("/", response_class=HTMLResponse)
 async def read_item(request: Request, db: Session = Depends(get_db)):
-    # Забираем данные из твоих же функций
     status = get_dashboard(db)
     history_data = get_history(limit=10, db=db)
+
+    # --- ЛОГИКА ДЛЯ ГРАФИКА ---
+    all_expenses = db.query(Expense).order_by(Expense.created_at.asc()).all()
+
+    # Формируем список дат от сегодня до 10 февраля
+    labels = []
+    ideal_line = []
+    actual_line = []
+
+    total_days = (END_DATE - date(2026, 1, 10)).days  # Весь период (31 день)
+    daily_decay = TOTAL_START_BUDGET / total_days
+
+    curr_date = date(2026, 1, 10)
+    temp_spent = 0
+
+    # Генерируем точки для графика (упрощенно на 7 дней вперед и назад)
+    for i in range(total_days + 1):
+        d = date(2026, 1, 10) + timedelta(days=i)
+        labels.append(d.strftime("%d.%m"))
+
+        # Идеальный остаток
+        ideal_line.append(max(0, TOTAL_START_BUDGET - (i * daily_decay)))
+
+        # Реальный остаток (только до сегодняшнего дня)
+        if d <= date.today():
+            day_expenses = sum(e.amount for e in all_expenses if e.created_at <= d)
+            actual_line.append(TOTAL_START_BUDGET - day_expenses)
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "status": status,
-        "history": history_data["history"]
+        "history": history_data["history"],
+        "chart_labels": labels,
+        "chart_ideal": ideal_line,
+        "chart_actual": actual_line
     })
 
 

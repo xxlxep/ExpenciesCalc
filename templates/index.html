@@ -33,6 +33,7 @@
         width: 40px;
     }
 </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <main class="container">
@@ -62,6 +63,10 @@
                 <button type="submit" class="contrast">Записать трату</button>
             </form>
         </article>
+        <article>
+    <header>📈 Линия финансовой жизни</header>
+    <canvas id="budgetChart" style="width: 100%; max-height: 300px;"></canvas>
+</article>
 
         <h3>История последних трат</h3>
         <table role="grid">
@@ -89,5 +94,38 @@
     </tbody>
 </table>
     </main>
+<script>
+    const ctx = document.getElementById('budgetChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ chart_labels|tojson }},
+            datasets: [
+                {
+                    label: 'Идеал (план)',
+                    data: {{ chart_ideal|tojson }},
+                    borderColor: 'rgba(200, 200, 200, 0.5)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Реальность',
+                    data: {{ chart_actual|tojson }},
+                    borderColor: '#36a2eb',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    fill: true,
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'RSD' } }
+            }
+        }
+    });
+</script>
 </body>
 </html>
