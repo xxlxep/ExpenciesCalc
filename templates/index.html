@@ -105,12 +105,50 @@
 </details>
 
 {% if el_stats %}
-<article style="padding: 10px 20px;">
-    <strong>За сутки:</strong>
-    ☀️ {{ el_stats.day_diff }} кВт |
-    🌙 {{ el_stats.night_diff }} кВт |
-    💸 ~{{ el_stats.total_cost }} RSD
+<article style="padding: 15px; border-left: 4px solid #3d5afe;">
+    <div class="grid">
+        <div>
+            <strong>Последний замер:</strong><br>
+            ☀️ {{ el_stats.day_diff }} кВт | 🌙 {{ el_stats.night_diff }} кВт
+        </div>
+        <div>
+            <strong>Стоимость замера:</strong><br>
+            💸 ~{{ el_stats.total_cost }} RSD
+        </div>
+        <div style="color: #4caf50;">
+            <strong>Прогноз на месяц:</strong><br>
+            📅 ~{{ el_stats.forecast }} RSD
+        </div>
+    </div>
 </article>
+{% endif %}
+        {% if all_readings %}
+<figure>
+  <table role="grid">
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>T1 (День)</th>
+        <th>T2 (Ночь)</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in all_readings %}
+      <tr>
+        <td>{{ r.created_at.strftime("%d.%m") }}</td>
+        <td>{{ r.t1_day }}</td>
+        <td>{{ r.t2_night }}</td>
+        <td>
+          <form action="/ui/electricity/delete/{{ r.id }}" method="post" style="margin:0;">
+            <button type="submit" class="outline secondary" style="padding: 2px 10px; border:none;">✕</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</figure>
 {% endif %}
     </main>
 <script>

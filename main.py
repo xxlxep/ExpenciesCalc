@@ -168,41 +168,59 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
     temp_spent = 0
 
     # Генерируем точки для графика (упрощенно на 7 дней вперед и назад)
+    # ... (код выше без изменений до цикла)
     for i in range(total_days + 1):
         d = date(2026, 1, 10) + timedelta(days=i)
         labels.append(d.strftime("%d.%m"))
 
-        # Идеальный остаток
         ideal_line.append(max(0, TOTAL_START_BUDGET - (i * daily_decay)))
 
-        # Реальный остаток (только до сегодняшнего дня)
         if d <= date.today():
             day_expenses = sum(e.amount for e in all_expenses if e.created_at <= d)
             actual_line.append(TOTAL_START_BUDGET - day_expenses)
 
-    readings = db.query(Electricity).order_by(Electricity.id.desc()).limit(2).all()
+    # <--- ЦИКЛ ЗАКОНЧИЛСЯ ТУТ (отступ меньше!) --->
+
+    all_readings = db.query(Electricity).order_by(Electricity.id.desc()).all()
     el_stats = None
 
-    if len(readings) >= 2:
-        last = readings[0]
-        prev = readings[1]
+    if len(all_readings) >= 2:
+        last = all_readings[0]
+        prev = all_readings[1]
+
+        # Расход за последний замер (например, за ночь/день)
+        day_diff = round(last.t1_day - prev.t1_day, 1)
+        night_diff = round(last.t2_night - prev.t2_night, 1)
+
+        # Считаем среднее на основе ВСЕЙ истории, что у нас есть
+        first_reading = all_readings[-1]
+        days_passed = (last.created_at - first_reading.created_at).days or 1
+
+        avg_t1_per_day = (last.t1_day - first_reading.t1_day) / days_passed
+        avg_t2_per_day = (last.t2_night - first_reading.t2_night) / days_passed
+
+        # Прогноз на месяц (30 дней)
+        monthly_t1 = avg_t1_per_day * 30
+        monthly_t2 = avg_t2_per_day * 30
+        forecast_cost = (monthly_t1 * 12) + (monthly_t2 * 3)
+
         el_stats = {
-            "day_diff": round(last.t1_day - prev.t1_day, 1),
-            "night_diff": round(last.t2_night - prev.t2_night, 1),
-            "total_cost": round((last.t1_day - prev.t1_day) * 12 + (last.t2_night - prev.t2_night) * 3, 1)
-            # Примерные цены
+            "day_diff": day_diff,
+            "night_diff": night_diff,
+            "total_cost": round((day_diff * 12) + (night_diff * 3), 1),
+            "forecast": round(forecast_cost, 0)
         }
-
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "status": status,
-        "history": history_data["history"],
-        "chart_labels": labels,
-        "chart_ideal": ideal_line,
-        "chart_actual": actual_line,
-        "el_stats": el_stats
-    })
-
+        all_readings = db.query(Electricity).order_by(Electricity.id.desc()).limit(5).all()
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "status": status,
+            "history": history_data["history"],
+            "chart_labels": labels,
+            "chart_ideal": ideal_line,
+            "chart_actual": actual_line,
+            "el_stats": el_stats,
+            "all_readings": all_readings
+        })
 
 # Ручка для формы (чтобы перенаправлять обратно на главную после добавления)
 @app.post("/ui/add")
@@ -231,4 +249,12 @@ async def add_electricity(
     new_reading = Electricity(t1_day=t1, t2_night=t2)
     db.add(new_reading)
     db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/ui/electricity/delete/{reading_id}")
+async def delete_reading(reading_id: int, db: Session = Depends(get_db)):
+    reading = db.query(Electricity).filter(Electricity.id == reading_id).first()
+    if reading:
+        db.delete(reading)
+        db.commit()
     return RedirectResponse(url="/", status_code=303)
