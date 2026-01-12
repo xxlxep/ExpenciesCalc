@@ -103,32 +103,25 @@ def add_expense(expense: ExpenseCreate, db: Session = Depends(get_db)):
 
 @app.get("/dashboard")
 def get_dashboard(db: Session = Depends(get_db)):
-    """Главная ручка для контроля ГТР: считает сколько осталось и какой лимит на сегодня"""
-    # Достаем все записи из таблицы расходов
     all_expenses = db.query(Expense).all()
-    # Считаем сумму всех потраченных денег
-    total_spent = sum(e.amount for e in all_expenses)
+    # Защита: если трат нет, сумма = 0
+    total_spent = sum(e.amount for e in all_expenses) if all_expenses else 0
 
-    # Считаем, сколько денег осталось от изначального бюджета
     remaining_budget = TOTAL_START_BUDGET - total_spent
-
-    # Считаем количество дней до 10 февраля (включая сегодняшний)
     today = date.today()
     days_left = (END_DATE - today).days
 
-    # ГЛАВНАЯ ЛОГИКА: делим остаток денег на остаток дней.
-    # Если дней 0 или меньше, лимитом считается весь остаток.
-    daily_limit = remaining_budget / days_left if days_left > 0 else remaining_budget
+    # Защита от деления на ноль и отрицательных дней
+    safe_days = days_left if days_left > 0 else 1
+    daily_limit = remaining_budget / safe_days
 
-    # Возвращаем JSON с полезной инфой для твоего спокойствия
     return {
-        "remaining_total_rsd": round(remaining_budget, 2),  # Округление до 2 знаков
-        "days_left": days_left,  # Дней до "зарплаты"
-        "daily_limit_rsd": round(daily_limit, 2),  # Сколько можно тратить сегодня
-        "total_spent": round(total_spent, 2),  # Сколько уже ушло
-        "today": today  # Текущая дата для сверки
+        "remaining_total_rsd": round(remaining_budget, 2),
+        "days_left": max(days_left, 0),
+        "daily_limit_rsd": round(daily_limit, 2),
+        "total_spent": round(total_spent, 2),
+        "today": today
     }
-
 
 @app.get("/history")
 def get_history(limit: int = 10, db: Session = Depends(get_db)):
@@ -155,54 +148,41 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
 
     # --- ЛОГИКА ДЛЯ ГРАФИКА ---
     all_expenses = db.query(Expense).order_by(Expense.created_at.asc()).all()
-
-    # Формируем список дат от сегодня до 10 февраля
     labels = []
     ideal_line = []
     actual_line = []
 
-    total_days = (END_DATE - date(2026, 1, 10)).days  # Весь период (31 день)
+    start_period = date(2026, 1, 10)
+    total_days = (END_DATE - start_period).days
     daily_decay = TOTAL_START_BUDGET / total_days
 
-    curr_date = date(2026, 1, 10)
-    temp_spent = 0
-
-    # Генерируем точки для графика (упрощенно на 7 дней вперед и назад)
-    # ... (код выше без изменений до цикла)
     for i in range(total_days + 1):
-        d = date(2026, 1, 10) + timedelta(days=i)
+        d = start_period + timedelta(days=i)
         labels.append(d.strftime("%d.%m"))
-
-        ideal_line.append(max(0, TOTAL_START_BUDGET - (i * daily_decay)))
+        ideal_line.append(max(0, round(TOTAL_START_BUDGET - (i * daily_decay), 2)))
 
         if d <= date.today():
             day_expenses = sum(e.amount for e in all_expenses if e.created_at <= d)
-            actual_line.append(TOTAL_START_BUDGET - day_expenses)
+            actual_line.append(round(TOTAL_START_BUDGET - day_expenses, 2))
+        else:
+            actual_line.append(None)  # Чтобы график не падал в ноль в будущем
 
-    # <--- ЦИКЛ ЗАКОНЧИЛСЯ ТУТ (отступ меньше!) --->
-
-    all_readings = db.query(Electricity).order_by(Electricity.id.desc()).all()
+    # --- ЭЛЕКТРИЧЕСТВО ---
+    all_readings_db = db.query(Electricity).order_by(Electricity.id.desc()).all()
     el_stats = None
 
-    if len(all_readings) >= 2:
-        last = all_readings[0]
-        prev = all_readings[1]
-
-        # Расход за последний замер (например, за ночь/день)
+    if len(all_readings_db) >= 2:
+        last = all_readings_db[0]
+        prev = all_readings_db[1]
         day_diff = round(last.t1_day - prev.t1_day, 1)
         night_diff = round(last.t2_night - prev.t2_night, 1)
 
-        # Считаем среднее на основе ВСЕЙ истории, что у нас есть
-        first_reading = all_readings[-1]
+        first_reading = all_readings_db[-1]
         days_passed = (last.created_at - first_reading.created_at).days or 1
+        avg_t1 = (last.t1_day - first_reading.t1_day) / days_passed
+        avg_t2 = (last.t2_night - first_reading.t2_night) / days_passed
 
-        avg_t1_per_day = (last.t1_day - first_reading.t1_day) / days_passed
-        avg_t2_per_day = (last.t2_night - first_reading.t2_night) / days_passed
-
-        # Прогноз на месяц (30 дней)
-        monthly_t1 = avg_t1_per_day * 30
-        monthly_t2 = avg_t2_per_day * 30
-        forecast_cost = (monthly_t1 * 12) + (monthly_t2 * 3)
+        forecast_cost = ((avg_t1 * 30) * 12) + ((avg_t2 * 30) * 3)
 
         el_stats = {
             "day_diff": day_diff,
@@ -210,18 +190,21 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
             "total_cost": round((day_diff * 12) + (night_diff * 3), 1),
             "forecast": round(forecast_cost, 0)
         }
-        all_readings = db.query(Electricity).order_by(Electricity.id.desc()).limit(5).all()
-        print(f"DEBUG: status={status}, el_stats={el_stats}")
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "status": status,
-            "history": history_data["history"],
-            "chart_labels": labels,
-            "chart_ideal": ideal_line,
-            "chart_actual": actual_line,
-            "el_stats": el_stats,
-            "all_readings": all_readings
-        })
+
+    # Берем только 5 последних для таблицы
+    readings_for_table = all_readings_db[:5]
+
+    # ВАЖНО: return должен быть в самом конце функции, без лишних отступов!
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "status": status,
+        "history": history_data["history"],
+        "chart_labels": labels,
+        "chart_ideal": ideal_line,
+        "chart_actual": actual_line,
+        "el_stats": el_stats,
+        "all_readings": readings_for_table
+    })
 
 # Ручка для формы (чтобы перенаправлять обратно на главную после добавления)
 @app.post("/ui/add")
