@@ -93,6 +93,25 @@
         {% endfor %}
     </tbody>
 </table>
+        <details>
+    <summary role="button" class="secondary outline">Внести счетчик</summary>
+    <form action="/ui/electricity" method="post">
+        <div class="grid">
+            <input type="number" step="0.1" name="t1" placeholder="День (T1)" required>
+            <input type="number" step="0.1" name="t2" placeholder="Ночь (T2)" required>
+            <button type="submit">OK</button>
+        </div>
+    </form>
+</details>
+
+{% if el_stats %}
+<article style="padding: 10px 20px;">
+    <strong>За сутки:</strong>
+    ☀️ {{ el_stats.day_diff }} кВт |
+    🌙 {{ el_stats.night_diff }} кВт |
+    💸 ~{{ el_stats.total_cost }} RSD
+</article>
+{% endif %}
     </main>
 <script>
     const ctx = document.getElementById('budgetChart').getContext('2d');

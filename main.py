@@ -46,10 +46,20 @@ class Expense(Base):
     description = Column(String)  # Описание: на что потратили (чечевица, бензин и т.д.)
     created_at = Column(Date, default=date.today)  # Дата записи (автоматом ставит "сегодня")
 
+class Electricity(Base):
+    __tablename__ = "electricity"
+    id = Column(Integer, primary_key=True, index=True)
+    t1_day = Column(Float)   # Дневной тариф (дорогой)
+    t2_night = Column(Float) # Ночной тариф (дешевый)
+    created_at = Column(Date, default=date.today)
 
-# Команда SQLAlchemy создать таблицу в файле .db, если её еще не существует
-Base.metadata.create_all(bind=engine)
+print("Checking tables...")
+from sqlalchemy import inspect
+inspector = inspect(engine)
+if "electricity" not in inspector.get_table_names():
+    print("Table 'electricity' NOT found. Creating...")
 
+Base.metadata.create_all(bind=engine) # Это создаст таблицу при перезапуске
 
 # --- ВАЛИДАЦИЯ ДАННЫХ (SCHEMAS) ---
 
@@ -170,13 +180,27 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
             day_expenses = sum(e.amount for e in all_expenses if e.created_at <= d)
             actual_line.append(TOTAL_START_BUDGET - day_expenses)
 
+    readings = db.query(Electricity).order_by(Electricity.id.desc()).limit(2).all()
+    el_stats = None
+
+    if len(readings) >= 2:
+        last = readings[0]
+        prev = readings[1]
+        el_stats = {
+            "day_diff": round(last.t1_day - prev.t1_day, 1),
+            "night_diff": round(last.t2_night - prev.t2_night, 1),
+            "total_cost": round((last.t1_day - prev.t1_day) * 12 + (last.t2_night - prev.t2_night) * 3, 1)
+            # Примерные цены
+        }
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "status": status,
         "history": history_data["history"],
         "chart_labels": labels,
         "chart_ideal": ideal_line,
-        "chart_actual": actual_line
+        "chart_actual": actual_line,
+        "el_stats": el_stats
     })
 
 
@@ -195,4 +219,16 @@ async def ui_delete_expense(expense_id: int, db: Session = Depends(get_db)):
     if expense:
         db.delete(expense)
         db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+# Эндпоинт для занесения показателей счётчика электроэнергии через интерфейс
+@app.post("/ui/electricity")
+async def add_electricity(
+    t1: float = Form(...),
+    t2: float = Form(...),
+    db: Session = Depends(get_db)
+):
+    new_reading = Electricity(t1_day=t1, t2_night=t2)
+    db.add(new_reading)
+    db.commit()
     return RedirectResponse(url="/", status_code=303)
