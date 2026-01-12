@@ -211,6 +211,7 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
             "forecast": round(forecast_cost, 0)
         }
         all_readings = db.query(Electricity).order_by(Electricity.id.desc()).limit(5).all()
+        print(f"DEBUG: status={status}, el_stats={el_stats}")
         return templates.TemplateResponse("index.html", {
             "request": request,
             "status": status,
