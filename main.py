@@ -146,12 +146,13 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
     status = get_dashboard(db)
     history_data = get_history(limit=10, db=db)
 
-    # --- ЛОГИКА ДЛЯ ГРАФИКА ---
+    # --- ЛОГИКА ДЛЯ ГРАФИКА (Бюджет) ---
     all_expenses = db.query(Expense).order_by(Expense.created_at.asc()).all()
     labels = []
     ideal_line = []
     actual_line = []
 
+    # Твои константы должны быть определены выше в коде (START_DATE, END_DATE и т.д.)
     start_period = date(2026, 1, 10)
     total_days = (END_DATE - start_period).days
     daily_decay = TOTAL_START_BUDGET / total_days
@@ -165,9 +166,9 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
             day_expenses = sum(e.amount for e in all_expenses if e.created_at <= d)
             actual_line.append(round(TOTAL_START_BUDGET - day_expenses, 2))
         else:
-            actual_line.append(None)  # Чтобы график не падал в ноль в будущем
+            actual_line.append(None)
 
-    # --- ЭЛЕКТРИЧЕСТВО ---
+    # --- ЭЛЕКТРИЧЕСТВО (Умный расчет) ---
     all_readings_db = db.query(Electricity).order_by(Electricity.id.desc()).all()
     el_stats = None
 
@@ -178,23 +179,37 @@ async def read_item(request: Request, db: Session = Depends(get_db)):
         night_diff = round(last.t2_night - prev.t2_night, 1)
 
         first_reading = all_readings_db[-1]
-        days_passed = (last.created_at - first_reading.created_at).days or 1
-        avg_t1 = (last.t1_day - first_reading.t1_day) / days_passed
-        avg_t2 = (last.t2_night - first_reading.t2_night) / days_passed
+        # Считаем разницу во времени для среднего расхода
+        delta_time = (last.created_at - first_reading.created_at).days or 1
+        avg_t1 = (last.t1_day - first_reading.t1_day) / delta_time
+        avg_t2 = (last.t2_night - first_reading.t2_night) / delta_time
 
-        forecast_cost = ((avg_t1 * 30) * 12) + ((avg_t2 * 30) * 3)
+        # Прогноз объема за 30 дней
+        monthly_t1 = avg_t1 * 30
+        monthly_t2 = avg_t2 * 30
+        total_monthly = monthly_t1 + monthly_t2
+
+        # Определяем тарифы EPS по зонам
+        if total_monthly <= 350:
+            r1, r2, zone = 9.61, 2.40, "Зеленая"
+        elif total_monthly <= 1600:
+            r1, r2, zone = 14.42, 3.60, "Голубая"
+        else:
+            r1, r2, zone = 28.84, 7.21, "Красная"
+
+        # Считаем прогноз с учетом налогов и сборов (~30%)
+        forecast_val = ((monthly_t1 * r1) + (monthly_t2 * r2)) * 1.3
 
         el_stats = {
             "day_diff": day_diff,
             "night_diff": night_diff,
-            "total_cost": round((day_diff * 12) + (night_diff * 3), 1),
-            "forecast": round(forecast_cost, 0)
+            "total_cost": round((day_diff * r1) + (night_diff * r2), 1),
+            "forecast": round(forecast_val, 0),
+            "zone": zone
         }
 
-    # Берем только 5 последних для таблицы
     readings_for_table = all_readings_db[:5]
 
-    # ВАЖНО: return должен быть в самом конце функции, без лишних отступов!
     return templates.TemplateResponse("index.html", {
         "request": request,
         "status": status,
